@@ -1,0 +1,81 @@
+#pragma once
+
+// Copy this file to config.h and fill in your values:
+//   cp config.h.example config.h
+// config.h is gitignored because it holds secrets (Wi-Fi password, OAuth token).
+
+// ---- Fill these in before flashing ----
+
+#define WIFI_SSID   "YourWiFiName"
+#define WIFI_PASS   "YourWiFiPassword"
+
+// Dedicated OAuth refresh token for THIS device. Mint one with:
+//   python3 server/device_login.py
+// (do NOT use `claude setup-token` - those tokens lack the user:profile scope
+// the usage endpoint requires, so they 403.) It's a separate login from your
+// everyday Claude Code session, so the device refreshing it never logs you out
+// elsewhere. The device turns it into short-lived access tokens on its own and
+// remembers the rotated token in flash (NVS), so you only paste it once.
+// Treat it like a password.
+#define DEVICE_REFRESH_TOKEN "REPLACE_ME"
+
+// Your local timezone, as a POSIX TZ string, so the device can render reset
+// times in local time. A few examples:
+//   US Pacific   "PST8PDT,M3.2.0,M11.1.0"
+//   US Eastern   "EST5EDT,M3.2.0,M11.1.0"
+//   UK           "GMT0BST,M3.5.0/1,M10.5.0"
+//   Central Eu   "CET-1CEST,M3.5.0,M10.5.0/3"
+// Full list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
+#define TIMEZONE    "PST8PDT,M3.2.0,M11.1.0"
+
+// How often to refetch usage from Anthropic (ms). The usage endpoint is
+// rate-limited tighter than a pure burst - 60s still tripped the cooldown in
+// practice, so keep this generous. The numbers move slowly and the LED reacts
+// instantly via beacons regardless, so this only paces the bars. On a 429/403
+// the device auto-backs-off, so an occasional trip self-heals.
+#define USAGE_POLL_MS 90000   // 90 seconds
+
+// ---- Spotify "now playing" mode (optional) ----
+// The display can also show what Spotify is playing. Switch screens with the
+// /switch Claude Code command, or directly:
+//   curl -X POST http://claude-display.local:8080/mode/spotify
+//   curl -X POST http://claude-display.local:8080/mode/usage      (or /mode/toggle)
+// Mint both values with:  python3 server/spotify_login.py
+// (it walks you through creating the free Spotify app first). Leave both empty
+// to disable Spotify mode. Treat the token like a password.
+#define SPOTIFY_CLIENT_ID     ""
+#define SPOTIFY_REFRESH_TOKEN ""
+
+// How often to refetch the currently playing track while in Spotify mode (ms).
+// The progress bar ticks locally between fetches, so this only paces how fast
+// track changes / seeks show up. Spotify's rate limits are far friendlier than
+// Anthropic's, so 5s is fine.
+#define SPOTIFY_POLL_MS 5000
+
+// ---- "thinking" beacons ----
+// The display listens on this mDNS name + port for pings from your computers.
+// Run server/beacon.py on each machine you use Claude Code on; it pings here
+// while Claude is working and the green LED blinks. Reach the device at
+//   http://<MDNS_NAME>.local:<BEACON_PORT>/
+#define MDNS_NAME    "claude-display"
+#define BEACON_PORT  8080
+
+// Safety backstop only: if no beacon arrives for this long, fall back to idle.
+// The precise "stopped" signal is an explicit POST /thinking/off (e.g. from a
+// Claude Code Stop hook - see README), so this just catches a sender that died
+// mid-turn. Keep it well above the longest gap between "on" pings.
+#define BEACON_TTL_MS 300000   // 5 minutes
+
+// Onboard RGB status LED. The Waveshare ESP32-C6-LCD-1.47 has a WS2812 on
+// GPIO8. The 480x320 TFT_eSPI boards have no onboard RGB LED, so it's disabled
+// there. Set to -1 to disable.
+#if defined(USE_LOVYANGFX)
+#define RGB_LED_PIN  8
+#else
+#define RGB_LED_PIN  -1
+#endif
+
+// Some WS2812s (including this Waveshare board's) wire red and green opposite to
+// what neopixelWrite() assumes, so "green" comes out red. Set to 1 to swap them.
+// If the breathing light shows the wrong colour, flip this.
+#define RGB_LED_SWAP_RG 1

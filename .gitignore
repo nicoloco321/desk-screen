@@ -1,0 +1,16 @@
+# secrets: Wi-Fi credentials + OAuth refresh tokens live here
+firmware/src/config.h
+
+# build output
+firmware/.pio/
+emulator/build/
+
+# emulator screenshots
+emulator/*.bmp
+emulator/shot_*.png
+emulator/wrap.png
+
+# python / os noise
+__pycache__/
+*.pyc
+.DS_Store
