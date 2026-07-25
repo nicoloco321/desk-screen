@@ -28,11 +28,16 @@ Do this:
 2. Send it — the response body is the mode that is now active:
 
    ```sh
-   curl -sf -m 3 -X POST http://claude-display.local:8080/mode/<mode>
+   curl -4 -sf -m 3 -X POST http://claude-display.local:8080/mode/<mode>
    ```
 
-   If the `.local` name times out (mDNS often fails under short curl
-   timeouts), find the device's IP with
+   The `-4` is required, not cosmetic. The device advertises only an A record
+   over mDNS, so a dual-stack lookup of `claude-display.local` stalls on the
+   AAAA query for ~5s before falling back — longer than the 3s budget, so the
+   request times out even though the device is healthy and the name resolves.
+   Forcing IPv4 skips that query and answers in ~40ms.
+
+   If it still fails, find the device's IP with
    `python3 ~/Documents/desk-screen/server/find_display.py` — or use the IP
    shown on the display's own status line — and retry against
    `http://<ip>:8080`.

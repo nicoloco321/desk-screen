@@ -7,8 +7,8 @@ green LED blinks. Run a copy on every computer you use Claude Code on (macOS,
 Windows, Linux) - the display blinks whenever *any* of them is active.
 
     python3 beacon.py                       # find the display via mDNS (claude-display.local)
-    python3 beacon.py --host 192.168.1.42   # or point straight at its IP
-    CLAUDE_DISPLAY_HOST=192.168.1.42 python3 beacon.py
+    python3 beacon.py --host 192.168.1.87   # or point straight at its IP
+    CLAUDE_DISPLAY_HOST=192.168.1.87 python3 beacon.py
 
 The device shows its IP and "<name>.local" on its status line. On Windows,
 mDNS (.local) needs Apple Bonjour installed; if that's missing, pass --host.

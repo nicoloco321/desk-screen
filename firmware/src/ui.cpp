@@ -56,6 +56,18 @@ void asciiCopy(char *dst, size_t n, const char *src) {
     dst[j] = '\0';
 }
 
+// Mix two RGB565 colours: t=0 gives a, t=255 gives b. Channels are blended in
+// their own bit widths (5/6/5) so no precision is lost going via RGB888.
+// (inline so the narrow-layout builds, which don't use it, don't warn.)
+static inline uint16_t blend565(uint16_t a, uint16_t b, int t) {
+    if (t < 0) t = 0; else if (t > 255) t = 255;
+    int ar = (a >> 11) & 0x1F, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
+    int br = (b >> 11) & 0x1F, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
+    return (uint16_t)((((ar + (br - ar) * t / 255) & 0x1F) << 11) |
+                      (((ag + (bg - ag) * t / 255) & 0x3F) << 5)  |
+                       ((ab + (bb - ab) * t / 255) & 0x1F));
+}
+
 static uint16_t barColor(float pct) {
     if (pct < 50) return COL_GREEN;
     if (pct < 80) return COL_YELLOW;
@@ -140,6 +152,11 @@ static void drawPlayPause(int cx, int y, int h, bool playing) {
 static const int SPIN_SIZE = 60;
 static const int SPIN_X = (SCREEN_W - SPIN_SIZE) / 2;  // centered
 static const int SPIN_Y = 78;
+
+// Animation pacing, per layout (used by uiTick). The small panels keep the
+// original slow 8-spoke sweep; the CPU on the C6 is better spent elsewhere.
+static const int SPIN_FRAMES   = 48;   // frames per revolution
+static const int SPIN_FRAME_MS = 90;   // ~4.3 s per revolution
 
 static const int BAR_X = 12;
 static const int BAR_W = SCREEN_W - 2 * BAR_X;
@@ -360,6 +377,11 @@ static void artRect(int *x, int *y, int *size) {
 
 static const int SPIN_SIZE = 100;
 
+// Animation pacing, per layout (used by uiTick). The wide panel runs on the
+// ESP32-P4, which has the headroom for a proper 25 fps sweep.
+static const int SPIN_FRAMES   = 36;   // frames per revolution
+static const int SPIN_FRAME_MS = 40;   // ~1.4 s per revolution
+
 // ---- usage, full screen: mascot / spinner left, the two bars right ----
 static const int WU_DIV_X   = 600;                    // vertical divider
 static const int WU_LEFT_CX = 300;                    // centerline of the left column
@@ -435,19 +457,52 @@ static void spinnerPos(int *x, int *y) {
     else { *x = WU_LEFT_CX - SPIN_SIZE / 2; *y = WU_SPIN_Y; }
 }
 
+// Orbiting-dot spinner: SPIN_DOTS dots on a ring, tapering in both size and
+// brightness from the leading dot backwards, so the tail dissolves into the
+// background like a comet.
+//
+// The taper is the whole point. The previous version drew 8 identical spokes
+// from a common centre, which is 8-fold symmetric in a single flat colour -
+// it read as a static asterisk and you could barely tell it was turning.
+// Giving each dot a different weight breaks the symmetry, so both the motion
+// and its direction are obvious.
+//
+// fillSmoothCircle is anti-aliased (fillArc is not), so the dots stay clean
+// at this size instead of showing stair-stepped edges.
+static const int SPIN_DOTS = 12;
+
 static void drawSpinner(bool active) {
     spin.fillSprite(COL_BG);
-    uint16_t c = active ? COL_ORANGE : COL_CARD;
-    float rot = active ? frame * 7.5f * DEG_TO_RAD : 0.0f;
     const float cx = SPIN_SIZE / 2.0f, cy = SPIN_SIZE / 2.0f;
-    const float r0 = SPIN_SIZE * 0.12f, r1 = SPIN_SIZE * 0.42f;
-    for (int i = 0; i < 8; i++) {
-        float a = rot + i * (PI / 4.0f);
-        float ca = cosf(a), sa = sinf(a);
-        spin.drawWideLine(cx + ca * r0, cy + sa * r0,
-                          cx + ca * r1, cy + sa * r1, SPIN_SIZE * 0.05f, c);
+    // Sized to fill the sprite: ring + leading dot reaches 0.48 of SPIN_SIZE,
+    // just inside the 0.5 edge. The footprint is fixed because split mode
+    // packs the spinner between x=790 and the 912 column edge.
+    const float ring   = SPIN_SIZE * 0.385f;  // orbit radius
+    const float dotMax = SPIN_SIZE * 0.095f;  // leading dot radius
+
+    // Idle draws the same ring at a flat, quiet weight - a calm "at rest"
+    // state rather than a wheel frozen mid-spin.
+    if (!active) {
+        for (int i = 0; i < SPIN_DOTS; i++) {
+            float a = i * (2.0f * (float)PI / SPIN_DOTS);
+            spin.fillSmoothCircle((int)(cx + cosf(a) * ring + 0.5f),
+                                  (int)(cy + sinf(a) * ring + 0.5f),
+                                  (int)(dotMax * 0.5f + 0.5f), COL_CARD);
+        }
+    } else {
+        const float step = 2.0f * (float)PI / SPIN_DOTS;
+        const float head = frame * (2.0f * (float)PI / SPIN_FRAMES);
+        for (int i = 0; i < SPIN_DOTS; i++) {
+            float lead = 1.0f - (float)i / SPIN_DOTS;  // 1 at the head, ->0 at the tail
+            float a = head - i * step;
+            // Squared falloff keeps the head crisp and the tail long and soft.
+            uint16_t c = blend565(COL_BG, COL_ORANGE, (int)(255.0f * lead * lead));
+            float r = dotMax * (0.40f + 0.60f * lead);
+            spin.fillSmoothCircle((int)(cx + cosf(a) * ring + 0.5f),
+                                  (int)(cy + sinf(a) * ring + 0.5f),
+                                  (int)(r + 0.5f), c);
+        }
     }
-    spin.fillCircle(SPIN_SIZE / 2, SPIN_SIZE / 2, SPIN_SIZE / 20, c);
     int x, y;
     spinnerPos(&x, &y);
     spin.pushSprite(x, y);
@@ -460,10 +515,13 @@ static void drawStatusWord(bool active) {
     int x, y;
     spinnerPos(&x, &y);
     int cx = x + SPIN_SIZE / 2, wy = y + SPIN_SIZE + 6;
-    tft.fillRect(cx - 90, wy, 180, 18, COL_BG);
+    // Font 4 to hold its own against the big numerals in the right column.
+    // The 30px band still clears SPL_SEC1_Y (166) in split mode, where this
+    // sits lowest: 28 + 100 + 6 + 30 = 164.
+    tft.fillRect(cx - 100, wy, 200, 30, COL_BG);
     tft.setTextDatum(TC_DATUM);
     tft.setTextColor(active ? COL_ORANGE : COL_DIM, COL_BG);
-    tft.drawString(active ? "working..." : "idle", cx, wy, 2);
+    tft.drawString(active ? "working..." : "idle", cx, wy, 4);
 }
 
 // One usage section: label + reset on the left, a big colored % on the
@@ -797,9 +855,9 @@ void uiTick(unsigned long now, bool thinking) {
     if (usageVisible()) {
         if (thinking) {
             idleSpinnerDrawn = false;
-            if (now - lastFrame >= 90) {
+            if (now - lastFrame >= (unsigned long)SPIN_FRAME_MS) {
                 lastFrame = now;
-                frame = (frame + 1) % 48;
+                frame = (frame + 1) % SPIN_FRAMES;
                 drawSpinner(true);
             }
         } else if (!idleSpinnerDrawn) {

@@ -9,7 +9,9 @@ display** (see [Hardware](#hardware)).
   thinking spinner whenever Claude is actively working, and two live bars:
   your **5-hour limit** and **weekly limit**, with real utilization
   percentages and reset times (green < 50%, yellow < 80%, red above)
-- **Onboard RGB LED** — blinks green whenever Claude is thinking (Waveshare C6 board)
+- **Onboard RGB LED** — breathes green whenever Claude is thinking (Waveshare
+  C6 board only; the P4-NANO has no controllable LED, and shows the same state
+  with the on-screen spinner)
 - **Spotify mode** — flip the same screen to a Spotify **now playing** view
   (album art, track, artist, live progress bar). Switch from inside Claude
   Code with the **`/switch`** slash command, or with a one-line `curl`; the
@@ -116,14 +118,33 @@ landscape as 1920x480. Notes:
 - **Graphics** — LovyanGFX ≥ 1.2.25, which has native ESP32-P4 MIPI-DSI
   support (`Bus_DSI`/`Panel_DSI`). The 1920x480 framebuffer lives in the
   P4's 32 MB PSRAM.
-- **Chip revision** — the env's board file targets production rev 3.0x
-  chips (current P4-NANO stock). For an early engineering-sample chip,
-  change `board` to `esp32-p4-evboard`.
-- **Untested on hardware yet**: this env compiles and the layout is
-  verified in the [emulator](emulator/), but it was written before the
-  panel arrived. If the screen stays dark or shows wrong colours, the
-  prime suspects (link colour format, lane rate) are commented in
-  [display.h](firmware/src/display.h).
+- **Chip revision** — the `board` must match your silicon, because the board
+  file's `chip_variant` selects the bootloader and precompiled IDF libs. The
+  env ships `esp32-p4-evboard` (ES, pre rev.300 — `esp32p4_es`); for a
+  production rev 3.0x chip use `esp32-p4_r3-evboard`. A mismatch panics the
+  second-stage bootloader with `Guru Meditation Error: Core 0 panic'ed
+  (Illegal instruction)` at its entry point and the board boot-loops without
+  ever reaching the app — which looks exactly like a dead screen. Check yours:
+
+  ```
+  esptool --port /dev/cu.usbmodemXXXX --no-stub chip-id
+  ```
+- **Status LED** — there isn't one to drive. The P4-NANO's only LED (`LED1`)
+  is a hardwired power indicator: two terminals, anode on the 3V3 rail,
+  cathode on GND, no GPIO on either net. Confirmed on hardware by sweeping
+  all 38 free GPIOs as both WS2812 data lines and plain outputs, with no
+  reaction. The on-screen spinner and `working...`/`idle` text carry the same
+  signal. To add an external WS2812, point `RGB_LED_PIN` in
+  [config.h](firmware/src/config.h) at a free header GPIO (21 and 22 are
+  known-safe) — note GPIO8 is the panel's I2C SCL here, *not* an LED pin as
+  it is on the C6.
+- **Verified on hardware** — the DSI panel, Wi-Fi (via the C6 over
+  esp-hosted), mDNS and mode switching all work as written, at RGB565 with a
+  1000 Mbps lane rate. Two harmless boot messages to ignore: the
+  `nvs_get_str ... NOT_FOUND` lines are first-boot token seeding, and
+  `hostedHasUpdate(): Could not get slave firmware version` is a non-fatal
+  esp-hosted version probe — Wi-Fi associates fine regardless. The firmware
+  prints nothing of its own, so a quiet serial console after boot is normal.
 
 The wide build also unlocks **split mode** (`/mode/split` or
 `/switch split`): usage on the left half, Spotify on the right.
@@ -191,7 +212,7 @@ pio run -e ili9488 -t upload               # generic ESP32 + ILI9488 module
 All environments are verified to compile. The first build of the pioarduino
 envs (`waveshare-c6-lcd-147`, `waveshare-p4-88`) is slow because it downloads
 the toolchain. On boot the display
-shows its address (e.g. `claude-display.local  192.168.1.42`) on the status line.
+shows its address (e.g. `claude-display.local  192.168.1.87`) on the status line.
 
 The bars should fill in within ~30 s. If they show `--`, see Troubleshooting.
 
@@ -236,7 +257,7 @@ trailing delay. (`-m 1` keeps a hook from ever blocking Claude Code; the device'
 
 ```sh
 python3 server/beacon.py            # auto-finds the display at claude-display.local
-python3 server/beacon.py --host 192.168.1.42   # or point at its IP
+python3 server/beacon.py --host 192.168.1.87   # or point at its IP
 ```
 
 No dependencies — Python 3 stdlib only, macOS/Windows/Linux. It infers activity

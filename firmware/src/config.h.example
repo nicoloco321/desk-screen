@@ -66,16 +66,34 @@
 // mid-turn. Keep it well above the longest gap between "on" pings.
 #define BEACON_TTL_MS 300000   // 5 minutes
 
-// Onboard RGB status LED. The Waveshare ESP32-C6-LCD-1.47 has a WS2812 on
-// GPIO8. The 480x320 TFT_eSPI boards have no onboard RGB LED, so it's disabled
-// there. Set to -1 to disable.
-#if defined(USE_LOVYANGFX)
-#define RGB_LED_PIN  8
+// Onboard RGB status LED - breathes green while Claude is thinking.
+// Set to -1 to disable, or to a free GPIO to drive an external WS2812.
+//
+// Only the Waveshare ESP32-C6-LCD-1.47 has one onboard: a WS2812 on GPIO8.
+//
+// The ESP32-P4-NANO has NO software-controllable LED. Its only LED (LED1 in
+// the schematic) is a two-terminal power indicator sitting on the 3V3 rail
+// with its cathode on GND - no GPIO on either net. Verified on hardware by
+// sweeping all 38 free GPIOs, each driven both as a WS2812 data line and as a
+// plain push-pull output, with no reaction. So the P4 case is -1 and shows
+// thinking state on screen instead (spinner + "working..."/"idle", ui.cpp).
+// It is checked FIRST below on purpose: GPIO8 is the DSI panel's I2C SCL on
+// the P4, so the C6's value must never reach this build.
+//
+// To add an external WS2812 to the P4, set the DSI case to a free header GPIO
+// and wire DIN/5V/GND. 21 and 22 were both verified harmless during the sweep.
+//
+// The 480x320 TFT_eSPI boards have no onboard RGB LED either.
+#if defined(USE_LOVYANGFX_DSI)
+#define RGB_LED_PIN  -1   // ESP32-P4-NANO: power LED only, nothing to drive
+#elif defined(USE_LOVYANGFX)
+#define RGB_LED_PIN  8    // Waveshare ESP32-C6-LCD-1.47: onboard WS2812
 #else
-#define RGB_LED_PIN  -1
+#define RGB_LED_PIN  -1   // Sunton / bare ILI9488: no onboard RGB LED
 #endif
 
-// Some WS2812s (including this Waveshare board's) wire red and green opposite to
-// what neopixelWrite() assumes, so "green" comes out red. Set to 1 to swap them.
-// If the breathing light shows the wrong colour, flip this.
+// Some WS2812s (including the C6 board's) wire red and green opposite to what
+// neopixelWrite() assumes, so "green" comes out red. Set to 1 to swap them.
+// If the breathing light shows the wrong colour, flip this. Irrelevant while
+// RGB_LED_PIN is -1.
 #define RGB_LED_SWAP_RG 1
