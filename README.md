@@ -338,6 +338,33 @@ or plain
 `/switch` to be asked which one you want. (Claude Code discovers new commands
 at session start, so restart it once after copying.)
 
+#### The macOS menu bar app
+
+[menubar/](menubar/) is a small native menu bar dropdown for the same
+endpoints — no terminal, no Claude Code session needed:
+
+```sh
+cd menubar && ./build.sh --run
+```
+
+That produces `DeskSwitch.app` (Swift + Cocoa, no dependencies beyond the
+Xcode command line tools) and launches it. The menu bar glyph tracks what the
+panel is showing — a bar chart for usage, a music note for Spotify, a split
+rectangle for split mode, and a warning badge when the display can't be
+reached. The dropdown lists the three modes with a checkmark on the active
+one, plus **Cycle to next** (⌘T) and **Quit**.
+
+It refreshes when you open the menu and once a minute, so the glyph stays
+honest when the mode is changed elsewhere — by `/switch`, a `curl`, or another
+machine. To start it at login, add `DeskSwitch.app` in **System Settings →
+General → Login Items**.
+
+The app runs as an agent (`LSUIElement`), so there's no Dock icon or window.
+It talks to `claude-display.local` directly via `URLSession`; unlike `curl` it
+does **not** need the `-4` workaround, since CFNetwork resolves `.local` on
+its own path (see the comments in
+[DeskSwitch.swift](menubar/DeskSwitch.swift)).
+
 ## Desktop emulator
 
 Don't have the screen yet (or don't want to reflash to try a layout tweak)?
