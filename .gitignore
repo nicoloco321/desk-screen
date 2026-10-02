@@ -4,7 +4,6 @@ firmware/src/config.h
 # build output
 firmware/.pio/
 emulator/build/
-menubar/DeskSwitch.app/
 
 # emulator screenshots
 emulator/*.bmp
